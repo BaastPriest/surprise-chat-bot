@@ -3,7 +3,7 @@ const { Telegraf } = require('telegraf');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
-const { usePostgres, pool, readJson, writeJson, upsertUser, setUserBirthday, setUserOptin, enableGifts, getAllUsersWithBirthdays, getAllGiftEnabledChats } = require('./db');
+const { usePostgres, pool, readJson, writeJson, upsertUser, setUserBirthday, setUserOptin, enableGifts, getAllUsersWithBirthdays, getAllGiftEnabledChats, initSchemaIfNeeded } = require('./db');
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN || '');
 if (!process.env.TELEGRAM_TOKEN && process.env.NODE_ENV !== 'test') {
