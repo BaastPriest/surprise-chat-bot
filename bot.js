@@ -190,9 +190,36 @@ const scheduleDaily = () => cron.schedule('0 7 * * *', async () => { // every da
 });
 
 if (process.env.NODE_ENV !== 'test') {
-    scheduleDaily();
-    bot.launch();
-    console.log('Бот запущен...');
+    (async () => {
+        if (usePostgres) {
+            try {
+                await pool.query('SELECT 1');
+            } catch (e) {
+                console.error('DB connection failed:', e.message);
+            }
+            await initSchemaIfNeeded();
+        }
+        scheduleDaily();
+        const useWebhook = process.env.USE_WEBHOOK === 'true' || !!process.env.WEBHOOK_DOMAIN;
+        try {
+            if (useWebhook) {
+                const domain = process.env.WEBHOOK_DOMAIN;
+                const hookPath = `/telegraf/${process.env.TELEGRAM_TOKEN}`;
+                const port = Number(process.env.PORT) || 3000;
+                await bot.launch({
+                    dropPendingUpdates: true,
+                    webhook: { domain, hookPath, port },
+                });
+                console.log(`Бот запущен в webhook-режиме на порту ${port}, домен ${domain}`);
+            } else {
+                await bot.launch({ dropPendingUpdates: true });
+                console.log('Бот запущен в polling-режиме...');
+            }
+        } catch (e) {
+            console.error('Bot launch failed:', e.message);
+            throw e;
+        }
+    })();
 }
 
 module.exports = {

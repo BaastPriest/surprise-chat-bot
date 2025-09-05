@@ -8,7 +8,7 @@ let pool = null;
 if (usePostgres) {
     pool = new Pool({
         connectionString: process.env.DATABASE_URL,
-        ssl: process.env.PGSSL === 'true' ? { rejectUnauthorized: false } : true,
+        ssl: process.env.PGSSL === 'true' ? { rejectUnauthorized: false } : false,
     });
 }
 
@@ -31,6 +31,23 @@ module.exports = {
     pool,
     readJson,
     writeJson,
+    async initSchemaIfNeeded() {
+        if (!usePostgres) return;
+        try {
+            const sqlPath = path.join(__dirname, 'sql', 'init.sql');
+            const raw = fs.readFileSync(sqlPath, 'utf-8');
+            const statements = raw
+                .split(';')
+                .map(s => s.trim())
+                .filter(Boolean);
+            for (const stmt of statements) {
+                if (stmt.startsWith('--')) continue;
+                await pool.query(stmt);
+            }
+        } catch (e) {
+            console.error('DB schema init failed:', e.message);
+        }
+    },
     async upsertUser(user) {
         if (!usePostgres) return;
         const { user_id, username, first_name, last_name } = user;
