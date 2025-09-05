@@ -3,6 +3,7 @@ const { Telegraf } = require('telegraf');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
+const { usePostgres, pool, readJson, writeJson, upsertUser, setUserBirthday, setUserOptin, enableGifts, getAllUsersWithBirthdays, getAllGiftEnabledChats } = require('./db');
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN || '');
 if (!process.env.TELEGRAM_TOKEN && process.env.NODE_ENV !== 'test') {
@@ -18,15 +19,14 @@ if (!fs.existsSync(dbPath)) fs.writeFileSync(dbPath, JSON.stringify({ users: {},
 
 function readDb() {
     try {
-        const raw = fs.readFileSync(dbPath, 'utf-8');
-        return JSON.parse(raw);
+        return readJson();
     } catch (e) {
         return { users: {}, groups: {} };
     }
 }
 
 function writeDb(db) {
-    fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+    writeJson(db);
 }
 
 function normalizeDateStr(ddmm) {
@@ -75,27 +75,37 @@ async function handleMybd(ctx) {
     const args = (ctx.message.text || '').split(/\s+/).slice(1);
     const ddmm = normalizeDateStr(args[0] || '');
     if (!ddmm) return ctx.reply('Укажите дату в формате DD.MM, например: /mybd 03.11');
-    const db = readDb();
     const userId = String(ctx.from.id);
-    db.users[userId] = db.users[userId] || { id: userId };
-    db.users[userId].birthday = ddmm;
-    db.users[userId].username = ctx.from.username;
-    db.users[userId].first_name = ctx.from.first_name;
-    db.users[userId].last_name = ctx.from.last_name;
-    writeDb(db);
+    if (usePostgres) {
+        await upsertUser({ user_id: Number(userId), username: ctx.from.username, first_name: ctx.from.first_name, last_name: ctx.from.last_name });
+        await setUserBirthday(Number(userId), ddmm);
+    } else {
+        const db = readDb();
+        db.users[userId] = db.users[userId] || { id: userId };
+        db.users[userId].birthday = ddmm;
+        db.users[userId].username = ctx.from.username;
+        db.users[userId].first_name = ctx.from.first_name;
+        db.users[userId].last_name = ctx.from.last_name;
+        writeDb(db);
+    }
     return ctx.reply(`Сохранил вашу дату рождения: ${ddmm}`);
 }
 
 function handleOptin(ctx) {
-    const db = readDb();
     const userId = String(ctx.from.id);
-    db.users[userId] = db.users[userId] || { id: userId };
-    db.users[userId].optin = true;
-    db.users[userId].username = ctx.from.username;
-    db.users[userId].first_name = ctx.from.first_name;
-    db.users[userId].last_name = ctx.from.last_name;
-    writeDb(db);
-    return ctx.reply('Готово! Я смогу писать вам в ЛС с напоминаниями.');
+    if (usePostgres) {
+        return setUserOptin(Number(userId), true, { username: ctx.from.username, first_name: ctx.from.first_name, last_name: ctx.from.last_name })
+            .then(() => ctx.reply('Готово! Я смогу писать вам в ЛС с напоминаниями.'));
+    } else {
+        const db = readDb();
+        db.users[userId] = db.users[userId] || { id: userId };
+        db.users[userId].optin = true;
+        db.users[userId].username = ctx.from.username;
+        db.users[userId].first_name = ctx.from.first_name;
+        db.users[userId].last_name = ctx.from.last_name;
+        writeDb(db);
+        return ctx.reply('Готово! Я смогу писать вам в ЛС с напоминаниями.');
+    }
 }
 
 async function handleSetupGifts(ctx) {
@@ -111,11 +121,15 @@ async function handleSetupGifts(ctx) {
     } catch (e) {
         // If cannot verify, proceed cautiously
     }
-    const db = readDb();
     const chatId = String(ctx.chat.id);
-    db.groups[chatId] = db.groups[chatId] || { id: chatId };
-    db.groups[chatId].giftsEnabled = true;
-    writeDb(db);
+    if (usePostgres) {
+        await enableGifts(Number(chatId));
+    } else {
+        const db = readDb();
+        db.groups[chatId] = db.groups[chatId] || { id: chatId };
+        db.groups[chatId].giftsEnabled = true;
+        writeDb(db);
+    }
     return ctx.reply('Режим подарков включен. Я напомню в ЛС за 3 и 1 день и поздравлю в чате.');
 }
 
@@ -128,10 +142,16 @@ bot.command('setup_gifts', (ctx) => handleSetupGifts(ctx));
 
 // --- Scheduler ---
 async function runDailyTick(botInstance, nowDate) {
-    const db = readDb();
     const now = nowDate || new Date();
-    const allUsers = Object.values(db.users || {});
-    const allGroups = Object.values(db.groups || {});
+    let allUsers, allGroups;
+    if (usePostgres) {
+        allUsers = await getAllUsersWithBirthdays();
+        allGroups = await getAllGiftEnabledChats();
+    } else {
+        const db = readDb();
+        allUsers = Object.values(db.users || {});
+        allGroups = Object.values(db.groups || {});
+    }
 
     for (const user of allUsers) {
         if (!user.birthday) continue;
