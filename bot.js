@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
+const express = require('express');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
@@ -206,9 +207,16 @@ if (process.env.NODE_ENV !== 'test') {
                 const domain = process.env.WEBHOOK_DOMAIN;
                 const hookPath = `/telegraf/${process.env.TELEGRAM_TOKEN}`;
                 const port = Number(process.env.PORT) || 3000;
-                await bot.launch({
-                    dropPendingUpdates: true,
-                    webhook: { domain, hookPath, port },
+                const app = express();
+                app.get('/', (req, res) => res.status(200).send('OK'));
+                app.use(express.json());
+                app.use(hookPath, (req, res, next) => {
+                    // Telegraf webhook callback
+                    bot.webhookCallback(hookPath)(req, res, next);
+                });
+                await bot.telegram.setWebhook(`${domain}${hookPath}`, { drop_pending_updates: true });
+                app.listen(port, '0.0.0.0', () => {
+                    console.log(`HTTP server listening on ${port}`);
                 });
                 console.log(`Бот запущен в webhook-режиме на порту ${port}, домен ${domain}`);
             } else {
