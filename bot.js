@@ -209,14 +209,29 @@ if (process.env.NODE_ENV !== 'test') {
                 const port = Number(process.env.PORT) || 3000;
                 const app = express();
                 app.get('/', (req, res) => res.status(200).send('OK'));
+                app.head('/', (req, res) => res.status(200).end());
+                app.get('/healthz', (req, res) => res.status(200).send('OK'));
                 app.use(express.json());
                 app.use(hookPath, (req, res, next) => {
                     // Telegraf webhook callback
                     bot.webhookCallback(hookPath)(req, res, next);
                 });
-                await bot.telegram.setWebhook(`${domain}${hookPath}`, { drop_pending_updates: true });
-                app.listen(port, '0.0.0.0', () => {
+                const server = app.listen(port, '0.0.0.0', async () => {
                     console.log(`HTTP server listening on ${port}`);
+                    try {
+                        await bot.telegram.setWebhook(`${domain}${hookPath}`, { drop_pending_updates: true });
+                        console.log('Webhook set successfully');
+                    } catch (err) {
+                        console.error('setWebhook failed:', err && err.message ? err.message : err);
+                    }
+                });
+                process.on('SIGTERM', () => {
+                    console.log('Received SIGTERM');
+                    server.close(() => process.exit(0));
+                });
+                process.on('SIGINT', () => {
+                    console.log('Received SIGINT');
+                    server.close(() => process.exit(0));
                 });
                 console.log(`Бот запущен в webhook-режиме на порту ${port}, домен ${domain}`);
             } else {
