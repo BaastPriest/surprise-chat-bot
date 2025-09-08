@@ -75,11 +75,11 @@ function formatDdMm(date) {
 
 // --- Commands ---
 function handleStart(ctx) {
-    ctx.reply('Привет! Я Surprise Chat Bot.\n\nКоманды:\n/mybd DD.MM — установить дату рождения\n/setup_gifts — включить режим подарков в этом чате (только админы)\n/optin — разрешить мне писать вам в ЛС для напоминаний\n/help — помощь');
+    ctx.reply('Привет! Я Surprise Chat Bot.\n\nКоманды:\n/mybd DD.MM — установить дату рождения\n/setup_gifts — включить режим подарков в этом чате (только админы)\n/gift_link <url> — задать ссылку на приватный чат/сбор (только админы)\n/upcoming [N] — ближайшие дни рождения (по умолчанию 10)\n/optin — разрешить мне писать вам в ЛС для напоминаний\n/help — помощь');
 }
 
 function handleHelp(ctx) {
-    return ctx.reply('Команды:\n/mybd DD.MM — установить дату рождения\n/setup_gifts — включить режим подарков (в групповом чате)\n/optin — разрешить писать в ЛС\n/help — помощь');
+    return ctx.reply('Команды:\n/mybd DD.MM — установить дату рождения\n/setup_gifts — включить режим подарков (в групповом чате)\n/gift_link <url> — ссылка на приватный чат/сбор (только админ)\n/upcoming [N] — ближайшие дни рождения (по умолчанию 10)\n/optin — разрешить писать в ЛС\n/help — помощь');
 }
 
 async function handleMybd(ctx) {
