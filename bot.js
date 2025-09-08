@@ -229,7 +229,10 @@ if (process.env.NODE_ENV !== 'test') {
                 const server = app.listen(port, '0.0.0.0', async () => {
                     console.log(`HTTP server listening on ${port}`);
                     try {
-                        await bot.telegram.setWebhook(`${domain}${hookPath}`, { drop_pending_updates: true });
+                        await bot.telegram.setWebhook(`${domain}${hookPath}`, {
+                            drop_pending_updates: true,
+                            allowed_updates: ['message','edited_message','channel_post','edited_channel_post','callback_query','chat_member','my_chat_member']
+                        });
                         console.log('Webhook set successfully');
                     } catch (err) {
                         console.error('setWebhook failed:', err && err.message ? err.message : err);
