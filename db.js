@@ -11,6 +11,14 @@ if (usePostgres) {
         ssl: process.env.PGSSL === 'true' ? { rejectUnauthorized: false } : false,
         connectionTimeoutMillis: 5000,
     });
+
+pool.query('SELECT NOW() AS now')
+    .then(r => console.log('DB OK:', r.rows[0].now))
+    .catch(e => console.error('DB connection failed:', e.message));
+
+pool.query('SELECT NOW() AS now')
+    .then(r => console.log('DB OK:', r.rows[0].now))
+    .catch(e => console.error('DB connection failed:', e.message));
 }
 
 // JSON fallback paths
@@ -34,19 +42,29 @@ module.exports = {
     writeJson,
     async initSchemaIfNeeded() {
         if (!usePostgres) return;
+        if (process.env.INIT_DB_ON_START === 'false') return;
+        const sqlPath = path.join(__dirname, 'sql', 'init.sql');
         try {
-            const sqlPath = path.join(__dirname, 'sql', 'init.sql');
             const raw = fs.readFileSync(sqlPath, 'utf-8');
-            const statements = raw
-                .split(';')
-                .map(s => s.trim())
-                .filter(Boolean);
-            for (const stmt of statements) {
-                if (stmt.startsWith('--')) continue;
-                await pool.query(stmt);
+            if (!raw || !raw.trim()) {
+                console.warn('init.sql is empty or missing');
+                return;
+            }
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                // node-postgres supports multiple statements separated by semicolons
+                await client.query(raw);
+                await client.query('COMMIT');
+                console.log('DB schema initialized (init.sql applied)');
+            } catch (err) {
+                await client.query('ROLLBACK');
+                console.error('DB schema init failed:', err.message);
+            } finally {
+                client.release();
             }
         } catch (e) {
-            console.error('DB schema init failed:', e.message);
+            console.error('DB schema init read error:', e.message);
         }
     },
     async upsertUser(user) {
