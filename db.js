@@ -100,6 +100,20 @@ module.exports = {
             [chat_id]
         );
     },
+    async setGiftLink(chat_id, gift_link) {
+        if (!usePostgres) return;
+        await pool.query(
+            `INSERT INTO chats (chat_id, gift_link, gifts_enabled)
+             VALUES ($1, $2, TRUE)
+             ON CONFLICT (chat_id) DO UPDATE SET gift_link = EXCLUDED.gift_link, gifts_enabled = TRUE`,
+            [chat_id, gift_link]
+        );
+    },
+    async getGiftLink(chat_id) {
+        if (!usePostgres) return null;
+        const res = await pool.query(`SELECT gift_link FROM chats WHERE chat_id = $1`, [chat_id]);
+        return res.rows && res.rows[0] ? res.rows[0].gift_link : null;
+    },
     async getAllUsersWithBirthdays() {
         if (!usePostgres) return null;
         const res = await pool.query(
@@ -111,7 +125,7 @@ module.exports = {
     async getAllGiftEnabledChats() {
         if (!usePostgres) return null;
         const res = await pool.query(
-            `SELECT chat_id AS id FROM chats WHERE gifts_enabled = TRUE`
+            `SELECT chat_id AS id, gift_link FROM chats WHERE gifts_enabled = TRUE`
         );
         return res.rows || [];
     },

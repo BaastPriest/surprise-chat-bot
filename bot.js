@@ -4,7 +4,7 @@ const express = require('express');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
-const { usePostgres, pool, readJson, writeJson, upsertUser, setUserBirthday, setUserOptin, enableGifts, getAllUsersWithBirthdays, getAllGiftEnabledChats, initSchemaIfNeeded } = require('./db');
+const { usePostgres, pool, readJson, writeJson, upsertUser, setUserBirthday, setUserOptin, enableGifts, getAllUsersWithBirthdays, getAllGiftEnabledChats, initSchemaIfNeeded, setGiftLink, getGiftLink } = require('./db');
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN || '');
 // Temporary logging to diagnose missing updates in groups
@@ -20,7 +20,7 @@ bot.use(async (ctx, next) => {
 if (!process.env.TELEGRAM_TOKEN && process.env.NODE_ENV !== 'test') {
     console.error('TELEGRAM_TOKEN is not set');
     process.exit(1);
-}
+} 
 
 // --- Simple JSON file storage ---
 const dataDir = path.join(__dirname, 'data');
@@ -150,6 +150,56 @@ bot.help((ctx) => handleHelp(ctx));
 bot.command('mybd', (ctx) => handleMybd(ctx));
 bot.command('optin', (ctx) => handleOptin(ctx));
 bot.command('setup_gifts', (ctx) => handleSetupGifts(ctx));
+// /gift_link <url> - установить ссылку на приватный сбор-чат
+bot.command('gift_link', async (ctx) => {
+    if (!ctx.chat || ctx.chat.type === 'private') {
+        return ctx.reply('Команда работает только в групповом чате.');
+    }
+    try {
+        const member = await ctx.getChatMember(ctx.from.id);
+        if (!member || !['creator','administrator'].includes(member.status)) {
+            return ctx.reply('Только администратор может установить ссылку на сбор.');
+        }
+    } catch (_) {}
+    const args = (ctx.message.text || '').split(/\s+/).slice(1);
+    const url = args[0];
+    if (!url || !/^https?:\/\//i.test(url)) {
+        return ctx.reply('Укажите корректный URL: /gift_link https://example.com/invite');
+    }
+    if (usePostgres) {
+        await setGiftLink(Number(ctx.chat.id), url);
+    } else {
+        const db = readDb();
+        const chatId = String(ctx.chat.id);
+        db.groups[chatId] = db.groups[chatId] || { id: chatId };
+        db.groups[chatId].gift_link = url;
+        db.groups[chatId].giftsEnabled = true;
+        writeDb(db);
+    }
+    return ctx.reply('Ссылка на сбор сохранена ✅');
+});
+
+// /upcoming [N] — ближайшие дни рождения
+bot.command('upcoming', async (ctx) => {
+    const args = (ctx.message.text || '').split(/\s+/).slice(1);
+    const limit = Math.max(1, Math.min(50, parseInt(args[0] || '10', 10) || 10));
+    let users;
+    if (usePostgres) {
+        users = await getAllUsersWithBirthdays();
+    } else {
+        const db = readDb();
+        users = Object.values(db.users || {});
+    }
+    const now = new Date();
+    const list = users
+        .filter(u => u.birthday)
+        .map(u => ({ ...u, d: daysUntilFrom(u.birthday, now) }))
+        .sort((a,b) => a.d - b.d)
+        .slice(0, limit);
+    if (!list.length) return ctx.reply('Пока нет сохранённых дат.');
+    const lines = list.map(u => `${u.birthday} (через ${u.d} дн.): ${u.first_name || u.username || u.id}`);
+    return ctx.reply(lines.join('\n'));
+});
 
 // --- Scheduler ---
 async function runDailyTick(botInstance, nowDate) {
@@ -173,7 +223,10 @@ async function runDailyTick(botInstance, nowDate) {
                     if (other.id === user.id) continue;
                     if (!other.optin) continue;
                     try {
-                        await botInstance.telegram.sendMessage(Number(other.id), `Через 3 дня др у ${user.first_name || user.username || 'коллеги'} (${user.birthday}). Присоединяйся к сбору на подарок!`);
+                        // try to include gift link from any enabled group
+                        let link = '';
+                        for (const group of allGroups) { if (group.gift_link) { link = ` \nСбор: ${group.gift_link}`; break; } }
+                        await botInstance.telegram.sendMessage(Number(other.id), `Через 3 дня др у ${user.first_name || user.username || 'коллеги'} (${user.birthday}). Присоединяйся к сбору на подарок!${link}`);
                     } catch (_) {}
                 }
             } else if (d === 1) {
