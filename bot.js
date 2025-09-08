@@ -212,16 +212,17 @@ if (process.env.NODE_ENV !== 'test') {
         }
         scheduleDaily();
         const useWebhook = process.env.USE_WEBHOOK === 'true' || !!process.env.WEBHOOK_DOMAIN;
+        const port = Number(process.env.PORT) || 3000;
+        const app = express();
+        app.get('/', (req, res) => res.status(200).send('OK'));
+        app.head('/', (req, res) => res.status(200).end());
+        app.get('/healthz', (req, res) => res.status(200).send('OK'));
+        app.use(express.json());
+
         try {
             if (useWebhook) {
                 const domain = process.env.WEBHOOK_DOMAIN;
                 const hookPath = `/telegraf/${process.env.TELEGRAM_TOKEN}`;
-                const port = Number(process.env.PORT) || 3000;
-                const app = express();
-                app.get('/', (req, res) => res.status(200).send('OK'));
-                app.head('/', (req, res) => res.status(200).end());
-                app.get('/healthz', (req, res) => res.status(200).send('OK'));
-                app.use(express.json());
                 app.use(hookPath, (req, res, next) => {
                     // Telegraf webhook callback
                     bot.webhookCallback(hookPath)(req, res, next);
@@ -248,6 +249,9 @@ if (process.env.NODE_ENV !== 'test') {
                 });
                 console.log(`Бот запущен в webhook-режиме на порту ${port}, домен ${domain}`);
             } else {
+                app.listen(port, '0.0.0.0', () => {
+                    console.log(`HTTP server listening on ${port}`);
+                });
                 await bot.launch({ dropPendingUpdates: true });
                 console.log('Бот запущен в polling-режиме...');
             }
