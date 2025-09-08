@@ -7,6 +7,16 @@ const path = require('path');
 const { usePostgres, pool, readJson, writeJson, upsertUser, setUserBirthday, setUserOptin, enableGifts, getAllUsersWithBirthdays, getAllGiftEnabledChats, initSchemaIfNeeded } = require('./db');
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN || '');
+// Temporary logging to diagnose missing updates in groups
+bot.use(async (ctx, next) => {
+    try {
+        const kind = ctx.updateType;
+        const txt = ctx.message && ctx.message.text ? ctx.message.text : '';
+        const chatType = ctx.chat && ctx.chat.type ? ctx.chat.type : '';
+        console.log('Update:', kind, chatType, txt);
+    } catch (_) {}
+    return next();
+});
 if (!process.env.TELEGRAM_TOKEN && process.env.NODE_ENV !== 'test') {
     console.error('TELEGRAM_TOKEN is not set');
     process.exit(1);

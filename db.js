@@ -15,12 +15,7 @@ if (usePostgres) {
 pool.query('SELECT NOW() AS now')
     .then(r => console.log('DB OK:', r.rows[0].now))
     .catch(e => console.error('DB connection failed:', e.message));
-
-pool.query('SELECT NOW() AS now')
-    .then(r => console.log('DB OK:', r.rows[0].now))
-    .catch(e => console.error('DB connection failed:', e.message));
 }
-
 // JSON fallback paths
 const dataDir = path.join(__dirname, 'data');
 const dbPath = path.join(dataDir, 'db.json');
